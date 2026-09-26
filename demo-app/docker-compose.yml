@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  localdocqa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: localdocqa:latest
+    container_name: localdocqa
+    ports:
+      - "8000:8000"
+    environment:
+      - TRANSFORMERS_CACHE=/app/models
+      - HF_HOME=/app/models
+    restart: unless-stopped

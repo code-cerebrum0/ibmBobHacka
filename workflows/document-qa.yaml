@@ -1,0 +1,21 @@
+name: document-question-answering
+base_url: "http://localhost:8000"
+steps:
+  - name: health
+    method: GET
+    path: /health
+    expect_status: 200
+
+  - name: upload-document
+    method: POST
+    path: /upload
+    file: demo-app/sample-data/sample.txt
+    expect_status: 200
+
+  - name: ask-question
+    method: POST
+    path: /ask
+    json:
+      question: "What is this document about?"
+    expect_status: 200
+    timeout: 180

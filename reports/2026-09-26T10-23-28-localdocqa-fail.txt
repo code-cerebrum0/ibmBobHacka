@@ -1,0 +1,25 @@
+============================================================
+EGRESSPROOF REPORT
+============================================================
+Application   : LocalDocQA
+Timestamp     : 2026-09-26T10:23:28.517008+00:00
+Network policy: Full internet access (no isolation)
+
+Workflow:
+  document-question-answering
+
+Step results:
+  PASS  health
+  PASS  upload-document
+  FAIL  ask-question  ← HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=30.0)
+
+Failure evidence:
+
+  No suspicious external-dependency patterns detected in logs.
+  Review raw container logs for further detail.
+
+  Failed steps:
+    - ask-question: HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=30.0)
+
+Result: FAILED
+============================================================

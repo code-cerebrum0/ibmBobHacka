@@ -1,0 +1,10 @@
+EgressProof is a developer tool for release and deployment verification.
+
+It detects hidden runtime internet dependencies in Dockerized applications.
+Applications that appear self-contained may silently attempt to download models,
+contact external APIs, or load remote assets the first time they handle a real request.
+
+This sample document is used to demonstrate the LocalDocQA question-answering workflow.
+The system uploads this file, processes it, and attempts to answer questions about it.
+The embedding model required to answer questions is loaded lazily on the first request.
+When running under network isolation, this model download fails, revealing the hidden dependency.

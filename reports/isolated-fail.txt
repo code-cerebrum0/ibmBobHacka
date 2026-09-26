@@ -1,0 +1,34 @@
+============================================================
+EGRESSPROOF REPORT
+============================================================
+Application   : LocalDocQA
+Timestamp     : 2026-09-26T10:33:17.543690+00:00
+Network policy: External egress blocked
+
+Workflow:
+  document-question-answering
+
+Step results:
+  PASS  health
+  PASS  upload-document
+  FAIL  ask-question  <- Expected status 200, got 503
+
+Failure evidence:
+
+  Suspicious patterns detected in container logs:
+    - huggingface.co
+    - EGRESS_BLOCKED
+    - ConnectionError
+    - socket.gaierror
+    - requests.exceptions.ConnectionError
+    - HTTPSConnectionPool
+    - Temporary failure in name resolution
+
+  Failed workflow steps:
+    - ask-question: Expected status 200, got 503
+
+  Probable reason:
+    Embedding model was not packaged locally and attempted to download at runtime.
+
+Result: FAILED
+============================================================

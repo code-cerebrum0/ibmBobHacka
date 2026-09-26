@@ -1,0 +1,2 @@
+[console_scripts]
+egressproof = egressproof.cli:main

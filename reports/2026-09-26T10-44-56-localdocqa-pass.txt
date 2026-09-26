@@ -1,0 +1,19 @@
+============================================================
+EGRESSPROOF REPORT
+============================================================
+Application   : LocalDocQA
+Timestamp     : 2026-09-26T10:44:56.850715+00:00
+Network policy: External egress blocked
+
+Workflow:
+  document-question-answering
+
+Step results:
+  PASS  health
+  PASS  upload-document
+  PASS  ask-question
+
+External dependencies detected in logs : 0
+
+Result: VERIFIED
+============================================================

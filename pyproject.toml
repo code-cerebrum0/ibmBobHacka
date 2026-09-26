@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "egressproof"
+version = "0.1.0"
+description = "Detect hidden runtime internet dependencies in Dockerized applications."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-httpserver>=1.0",
+]
+
+[project.scripts]
+egressproof = "egressproof.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["egressproof*"]

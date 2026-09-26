@@ -1,0 +1,32 @@
+{
+  "app_name": "LocalDocQA",
+  "timestamp": "2026-09-26T10:23:28.517008+00:00",
+  "network_policy": "Full internet access (no isolation)",
+  "workflow_name": "document-question-answering",
+  "passed": false,
+  "steps": [
+    {
+      "name": "health",
+      "passed": true,
+      "status_code": 200,
+      "response_body": "{\"status\":\"ok\"}",
+      "error": null
+    },
+    {
+      "name": "upload-document",
+      "passed": true,
+      "status_code": 200,
+      "response_body": "{\"filename\":\"sample.txt\",\"chars\":681,\"status\":\"stored\"}",
+      "error": null
+    },
+    {
+      "name": "ask-question",
+      "passed": false,
+      "status_code": null,
+      "response_body": "",
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=30.0)"
+    }
+  ],
+  "matched_patterns": [],
+  "container_logs": "INFO:     172.17.0.1:42604 - \"GET /health HTTP/1.1\" 200 OK\nINFO:     172.17.0.1:42614 - \"GET /health HTTP/1.1\" 200 OK\nINFO:     172.17.0.1:42622 - \"POST /upload HTTP/1.1\" 200 OK\nINFO:     Started server process [1]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)\nINFO:localdocqa:Uploaded document: sample.txt (681 chars)\nINFO:localdocqa:Loading SentenceTransformer model all-MiniLM-L6-v2 ...\n/usr/local/lib/python3.11/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.\n  warnings.warn(\nINFO:sentence_transformers.SentenceTransformer:Use pytorch device_name: cpu\nINFO:sentence_transformers.SentenceTransformer:Load pretrained SentenceTransformer: all-MiniLM-L6-v2\n"
+}
