@@ -1,0 +1,13 @@
+
+EGRESSPROOF
+
+Application : LocalDocQA
+Boundary    : Restricted egress
+
+  ✓ health
+  ✓ upload-document
+  ✓ ask-question
+
+Unexpected runtime dependencies detected: 0
+
+RESULT: VERIFIED
