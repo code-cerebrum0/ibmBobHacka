@@ -82,9 +82,9 @@ def execute_step(step: dict, base_url: str, timeout: float = 30.0) -> StepResult
         passed = False
         error = str(exc)
 
-    label = "PASS" if passed else "FAIL"
+    mark = "✓" if passed else "✗"
     suffix = f" — {error}" if error else ""
-    print(f"  [{label}] {name}{suffix}")
+    print(f"  {mark} {name}{suffix}")
 
     return StepResult(
         name=name,
@@ -105,7 +105,6 @@ def run_workflow(workflow: dict, base_url: str, timeout_per_step: float = 30.0) 
         raise RuntimeError("Application did not become ready")
 
     name = workflow.get("name", "unnamed")
-    print(f"\n=== Workflow: {name} ===")
 
     results: list[StepResult] = []
     for step in workflow["steps"]:

@@ -1,15 +1,12 @@
 # EgressProof
 
-> **Detect → Diagnose → Repair → Verify**
->
-> Automated detection of hidden runtime internet dependencies in Dockerized applications.
+> **Detect hidden runtime internet dependencies in Dockerized applications — before they bite you in production.**
 
-Built for the **IBM Bob 2.0 Hackathon** — demonstrating Agent mode, parallel subagents,
-document understanding, debugging, and automated developer workflows.
+Built for the **IBM Bob 2.0 Hackathon** — demonstrating Agent mode, automated diagnosis, and developer-productivity workflows with IBM Bob.
 
 ---
 
-## The Problem
+## Problem
 
 Applications that appear self-contained can still have hidden runtime internet dependencies.
 An AI application may claim to run locally but, on its first real request, silently attempt to:
@@ -17,42 +14,213 @@ An AI application may claim to run locally but, on its first real request, silen
 - Download a Hugging Face model
 - Contact an external API
 - Load an asset from a CDN
-- Send telemetry
 
-This is only discovered **after** deployment into an environment with restricted egress —
-far too late.
+This is only discovered **after** deployment into an environment with restricted egress — after the on-call engineer gets paged at 2 AM.
 
 Simply checking whether a container starts is not enough.
 
 ---
 
-## What EgressProof Does
+## Why This Matters
 
-1. **Builds** your Dockerized application.
-2. **Starts** it under a restricted network environment (`docker network create --internal`).
-3. **Executes** a predefined meaningful user workflow (configuration-driven YAML).
-4. **Detects** when the workflow fails due to a hidden external dependency.
-5. **Collects** evidence: failed step, container logs, matched suspicious patterns.
-6. **Produces** a structured PASS/FAIL report.
-7. **Invokes IBM Bob** to diagnose the root cause and repair the application packaging.
-8. **Rebuilds** and **re-runs** the same workflow to produce a VERIFIED result.
+| Scenario | Failure mode |
+|---|---|
+| Air-gapped enterprise deployment | App starts, crashes on first real request |
+| Regulated-industry environment (HIPAA, FedRAMP) | Egress policy blocks model download silently |
+| Edge / offline deployment | No internet — runtime downloads impossible |
+| CI/CD smoke test passes, staging fails | Nobody ran the workflow under isolation |
+
+The gap between "the container starts" and "the application actually works in production" is exactly where EgressProof operates.
 
 ---
 
-## Demo Application: LocalDocQA
+## The EgressProof Solution
 
-A small FastAPI document question-answering service with a realistic hidden runtime dependency:
+EgressProof closes that gap with a simple four-step loop:
+
+1. **Build** your Dockerized application.
+2. **Apply** a deployment boundary — a restricted-egress environment (DNS blocked, no external name resolution).
+3. **Execute** a real user workflow against the running application.
+4. **Collect evidence** and produce a structured PASS/FAIL report.
+
+When the workflow fails, IBM Bob reads the report, identifies the root cause, and repairs the application packaging. EgressProof then rebuilds and re-runs to confirm the fix.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Dev([Developer]) --> EP[EgressProof CLI]
+    EP --> Build[Build Docker image]
+    Build --> Boundary[Apply deployment boundary\ndocker --dns 0.0.0.0]
+    Boundary --> Execute[Execute workflow\nhealth → upload → ask]
+    Execute --> Evidence[Collect evidence\ncontainer logs + pattern scan]
+    Evidence --> Pass{All steps\npassed?}
+
+    Pass -->|Yes| Verified([RESULT: VERIFIED])
+    Pass -->|No| Report[Generate failure report\n.txt + .json]
+    Report --> Bob[IBM Bob Agent\nreads report + Dockerfile]
+    Bob --> Repair[Bob repairs Dockerfile\nbakes model into image]
+    Repair --> Rebuild[Rebuild image]
+    Rebuild --> Rerun[Re-run same workflow\nunder same boundary]
+    Rerun --> Verified
+```
+
+---
+
+## End-to-End Workflow
 
 ```
+Developer
+   │
+   ▼
+egressproof run --app demo-app --workflow workflows/document-qa.yaml
+   │
+   ├─ 1. docker build -t egressproof-localdocqa demo-app
+   │
+   ├─ 2. docker run -d --dns 0.0.0.0 -p 8000:8000 egressproof-localdocqa
+   │        └─ DNS resolver set to 0.0.0.0 → external hostname lookups fail
+   │
+   ├─ 3. Execute workflow steps:
+   │        GET  /health         → 200 ✓
+   │        POST /upload         → 200 ✓
+   │        POST /ask            → 503 ✗  ← hidden dependency triggered
+   │
+   ├─ 4. Scan container logs for egress evidence
+   │        Matched: huggingface.co, socket.gaierror, ConnectionError …
+   │
+   └─ 5. Write reports/  ── fed to IBM Bob for diagnosis
+```
+
+---
+
+## Demo: LocalDocQA
+
+The demo application is a FastAPI document question-answering service containing a deliberately hidden runtime dependency:
+
+```python
+# demo-app/backend/main.py  — lazy model load on first /ask request
+SentenceTransformer("all-MiniLM-L6-v2")   # downloaded from huggingface.co at runtime
+```
+
+The model is loaded **lazily on the first `/ask` request — not at startup**. The app starts fine and passes health checks, but the first real workflow step triggers a download from `huggingface.co`.
+
+Under the restricted-egress boundary: **workflow fails**.  
+After Bob's repair (model baked into image at build time): **workflow passes**.
+
+---
+
+## Before vs After
+
+### Before repair — workflow under restricted egress
+
+```
+EGRESSPROOF
+
+Application : LocalDocQA
+Boundary    : Restricted egress
+
+  ✓ health
+  ✓ upload-document
+  ✗ ask-question
+
+Unexpected runtime dependencies:
+  huggingface.co
+
+Evidence:
+  Runtime model download attempted while external name resolution was unavailable.
+
+RESULT: FAILED
+```
+
+### After IBM Bob's repair — same workflow, same boundary
+
+```
+EGRESSPROOF
+
+Application : LocalDocQA
+Boundary    : Restricted egress
+
+  ✓ health
+  ✓ upload-document
+  ✓ ask-question
+
+Unexpected runtime dependencies detected: 0
+
+RESULT: VERIFIED
+```
+
+Full evidence files committed in [`reports/`](reports/):
+- [`reports/isolated-fail.txt`](reports/isolated-fail.txt) — pre-repair failure report
+- [`reports/isolated-fail.json`](reports/isolated-fail.json) — machine-readable evidence
+- [`reports/isolated-pass.txt`](reports/isolated-pass.txt) — post-repair VERIFIED result
+- [`reports/isolated-pass.json`](reports/isolated-pass.json) — full step-by-step record
+
+---
+
+## How IBM Bob Was Used
+
+| Task | Bob's role |
+|---|---|
+| Build `isolation.py`, `workflow.py` | Agent mode — parallel subagents |
+| Diagnose the failure report | **Agent — reads report, Dockerfile, main.py** |
+| Repair the Dockerfile | **Agent — applies minimal diff** |
+| Re-verification run | Agent — executes CLI command, confirms VERIFIED |
+| Hackathon presentation improvements | Agent — this task |
+
+Bob's exact repair:
+
+```dockerfile
+# ── REPAIR: bake the embedding model into the image at build time ──────────
+RUN python - <<'EOF'
+from sentence_transformers import SentenceTransformer
 SentenceTransformer("all-MiniLM-L6-v2")
+EOF
+
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_DATASETS_OFFLINE=1
 ```
 
-The model is loaded **lazily on the first `/ask` request** — NOT at startup. The app starts
-and passes health checks, but the first real workflow step that needs embeddings triggers
-a download from `huggingface.co`.
+Bob identified this from the failure report alone — no manual debugging required.
 
-Under network isolation: **workflow fails**.
-After Bob's repair (model baked into image): **workflow passes**.
+IBM Bob Task Session screenshots are in [`bob_sessions/`](bob_sessions/):
+- [`egressproof_build_and_detect.png`](bob_sessions/egressproof_build_and_detect.png) — Bob building the tool and detecting the failure
+- [`egressproof_repair.png`](bob_sessions/egressproof_repair.png) — Bob diagnosing and repairing the Dockerfile
+
+---
+
+## Developer Productivity Impact
+
+| Without EgressProof + Bob | With EgressProof + Bob |
+|---|---|
+| Deploy to staging, get paged | Catch the failure before it ships |
+| Manual log triage (15–60 min) | Structured evidence report (seconds) |
+| Debug root cause in Dockerfile | Bob reads the report and patches it |
+| Re-deploy and retest manually | EgressProof re-runs the same workflow automatically |
+| **Total: hours** | **Total: minutes** |
+
+---
+
+## Network Isolation — What It Is and What It Isn't
+
+EgressProof applies a **restricted-egress boundary** using `docker run --dns 0.0.0.0`.
+
+This sets the container's DNS resolver to a non-functional address (`0.0.0.0`), causing all external hostname lookups to fail with `socket.gaierror: [Errno -2] Name or service not known`. This accurately simulates the most common production constraint: **external DNS is blocked**.
+
+### What this catches
+- Runtime model downloads (Hugging Face, etc.)
+- External API calls that use hostnames
+- Any library that resolves a hostname on first use
+
+### What this does not replace
+- A full network firewall (`iptables`/`nftables` with IP-level blocking)
+- eBPF-based per-process egress telemetry
+- IP-addressed direct connections that bypass DNS (rare in practice)
+
+For the demo scenario — and for the vast majority of real-world cases where egress is blocked at the DNS layer — `--dns 0.0.0.0` is accurate and sufficient.
+
+See [`docs/isolation-verification.md`](docs/isolation-verification.md) for manual verification steps.
 
 ---
 
@@ -60,7 +228,7 @@ After Bob's repair (model baked into image): **workflow passes**.
 
 - **Docker** (Desktop or Engine) — running and accessible on the command line
 - **Python 3.11+**
-- Internet access on the build machine (for the baseline run and model bake-in)
+- Internet access on the build machine (for the baseline run and model bake-in during repair)
 
 ```bash
 pip install -e ".[dev]"
@@ -70,7 +238,7 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-### 1. Online Baseline (all steps should PASS)
+### 1. Baseline — normal network (all steps should PASS)
 
 ```bash
 python -m egressproof run \
@@ -79,15 +247,7 @@ python -m egressproof run \
   --no-isolation
 ```
 
-Expected output:
-```
-  [PASS] health
-  [PASS] upload-document
-  [PASS] ask-question
-Result: VERIFIED
-```
-
-### 2. Isolated Run (ask-question should FAIL)
+### 2. Restricted-egress run — ask-question should FAIL
 
 ```bash
 python -m egressproof run \
@@ -95,20 +255,7 @@ python -m egressproof run \
   --workflow workflows/document-qa.yaml
 ```
 
-Expected output:
-```
-  [PASS] health
-  [PASS] upload-document
-  [FAIL] ask-question — Expected status 200, got 503
-
-Suspicious patterns detected in container logs:
-  - huggingface.co
-  - EGRESS_BLOCKED
-
-Result: FAILED
-```
-
-### 3. Bob Repair
+### 3. Bob repair
 
 Open **IBM Bob in Agent mode** and paste:
 
@@ -116,7 +263,7 @@ Open **IBM Bob in Agent mode** and paste:
 Read reports/<latest>-localdocqa-fail.txt, demo-app/Dockerfile,
 demo-app/backend/main.py, and demo-app/backend/requirements.txt.
 
-The application failed the 'ask-question' workflow step under network isolation.
+The application failed the 'ask-question' workflow step under restricted egress.
 The failure evidence is in the report.
 
 Identify the root cause and modify demo-app/Dockerfile so that the application
@@ -124,14 +271,7 @@ no longer requires internet access during runtime to serve the /ask endpoint.
 Do not change the application logic. Only change the packaging/build steps.
 ```
 
-Bob will identify the missing model download in the Dockerfile and add:
-
-```dockerfile
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-    SentenceTransformer('all-MiniLM-L6-v2')"
-```
-
-### 4. Re-Verification (all steps should PASS under isolation)
+### 4. Re-verification — all steps should PASS under restricted egress
 
 ```bash
 python -m egressproof run \
@@ -139,15 +279,7 @@ python -m egressproof run \
   --workflow workflows/document-qa.yaml
 ```
 
-Expected output:
-```
-  [PASS] health
-  [PASS] upload-document
-  [PASS] ask-question
-
-External dependencies detected in logs: 0
-Result: VERIFIED
-```
+See [`DEMO.md`](DEMO.md) for the full live-demo sequence with exact expected outputs.
 
 ---
 
@@ -158,53 +290,27 @@ egressproof/
 ├── egressproof/         # Core tool
 │   ├── cli.py           # CLI entry point and orchestration
 │   ├── builder.py       # docker build wrapper
-│   ├── isolation.py     # internal network + container lifecycle
+│   ├── isolation.py     # DNS-isolation container lifecycle
 │   ├── workflow.py      # YAML workflow loader and HTTP executor
 │   ├── evidence.py      # log collection and pattern scanning
 │   └── reporter.py      # text + JSON report writer
 │
 ├── demo-app/            # LocalDocQA demo application
 │   ├── backend/main.py  # FastAPI app (contains the hidden dependency)
-│   ├── Dockerfile       # intentionally missing model bake-in (before repair)
+│   ├── Dockerfile       # repaired by Bob (model baked in)
 │   └── sample-data/     # sample.txt used by the workflow
 │
 ├── workflows/
 │   └── document-qa.yaml # workflow definition (health → upload → ask)
 │
-├── reports/             # generated reports (committed for demo evidence)
+├── reports/             # committed real evidence from actual runs
+│   ├── isolated-fail.txt / .json   ← pre-repair FAILED run
+│   └── isolated-pass.txt / .json   ← post-repair VERIFIED run
+│
+├── bob_sessions/        # IBM Bob Task Session screenshots (hackathon evidence)
 ├── tests/               # unit and integration tests
-├── evidence/            # Bob session screenshots
 └── docs/                # isolation verification guide
 ```
-
----
-
-## Network Isolation
-
-EgressProof uses `docker network create --internal` — a Docker-native approach requiring
-no iptables expertise:
-
-- Containers on the internal bridge have **no default gateway** → cannot reach external IPs.
-- The host can still reach containers via **published ports** (`-p 8000:8000`).
-- The EgressProof runner sends HTTP to `localhost:8000` (host-side) → works fine.
-- The app container tries to reach `huggingface.co` → blocked.
-
-See [`docs/isolation-verification.md`](docs/isolation-verification.md) for manual verification steps.
-
----
-
-## IBM Bob Usage
-
-| Task | Bob Role |
-|---|---|
-| Write `isolation.py` | Agent — parallel subagent |
-| Write `workflow.py` | Agent — parallel subagent |
-| Diagnose failure report | **Agent — core demo** (reads report + Dockerfile) |
-| Repair Dockerfile | **Agent — applies minimal diff** |
-| Re-verification run | Agent — runs CLI command |
-
-The `evidence/bob-session-summaries/` directory contains screenshots of Bob's
-diagnosis and repair session for hackathon documentation.
 
 ---
 
@@ -217,18 +323,25 @@ pytest tests/test_workflow.py tests/test_reporter.py -v
 # Integration tests (requires Docker)
 pytest tests/test_isolation.py -v -m requires_docker
 
-# Full app integration (requires Docker + internet)
+# Full app integration (requires Docker + internet for baseline)
 pytest tests/test_local_app.py -v -m requires_internet
 ```
 
 ---
 
-## Future Extensions
+## Limitations
 
-- eBPF-based network telemetry for precise per-process egress capture
+- The DNS-blocking mechanism (`--dns 0.0.0.0`) simulates blocked egress at the DNS layer. IP-addressed direct connections that bypass DNS would not be caught.
+- The demo workflow is hard-coded for the LocalDocQA application. Production use would require a workflow YAML per application.
+- Bob's repair is applied interactively (copy-paste prompt). Automating the Bob invocation is future work.
+
+---
+
+## Future Work
+
+- eBPF-based network telemetry for precise per-process egress capture (catches IP-addressed connections)
 - Kubernetes NetworkPolicy enforcement testing
-- Multi-step repair with dependency tree analysis
-- Web dashboard for report visualization
+- Automated Bob invocation via the Bob API (fully automated repair loop)
+- CI/CD integration (GitHub Actions) — fail the build if egress violations are detected
 - Support for docker-compose multi-service applications
-- CI/CD integration (GitHub Actions)
-- Automatic dependency patching beyond Dockerfile model baking
+- Multi-step repair with dependency-tree analysis

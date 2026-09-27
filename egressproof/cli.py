@@ -39,7 +39,7 @@ APP_PORT = 8000
 def _run(args: argparse.Namespace) -> int:
     """Execute the full EgressProof flow.  Returns exit code."""
     isolation = not args.no_isolation
-    network_policy = "External egress blocked" if isolation else "Full internet access (no isolation)"
+    network_policy = "Restricted egress" if isolation else "Normal network (no isolation)"
     network_name = f"egressproof-isolated-{int(time.time())}"
     base_url = f"http://localhost:{APP_PORT}"
 
@@ -50,9 +50,8 @@ def _run(args: argparse.Namespace) -> int:
         print(f"\n[egressproof] ERROR: {exc}", file=sys.stderr)
         return 2
 
-    # ── 2. Create isolated network (if needed) ────────────────────────────────
+    # ── 2. Create isolated network (if needed) — no-op under DNS strategy ────
     if isolation:
-        print(f"\n[egressproof] Creating isolated network '{network_name}' ...")
         try:
             create_isolated_network(network_name)
         except RuntimeError as exc:
@@ -60,7 +59,6 @@ def _run(args: argparse.Namespace) -> int:
             return 2
 
     # ── 3. Start container ────────────────────────────────────────────────────
-    print(f"\n[egressproof] Starting container '{CONTAINER_NAME}' on port {APP_PORT} ...")
     try:
         if isolation:
             start_isolated_container(IMAGE_TAG, network_name, APP_PORT, CONTAINER_NAME)
@@ -100,10 +98,8 @@ def _run(args: argparse.Namespace) -> int:
     # ── 6. Write report ───────────────────────────────────────────────────────
     txt_path, json_path = write_report(bundle, output_dir="reports")
     report_text = format_text_report(bundle)
-    print("\n" + report_text)
-    print(f"\n[egressproof] Reports written:")
-    print(f"  Text : {txt_path}")
-    print(f"  JSON : {json_path}")
+    print(report_text)
+    print(f"\nReports: {txt_path}  |  {json_path}")
 
     # ── 7. Teardown ───────────────────────────────────────────────────────────
     _cleanup(isolation, network_name, keep=args.keep)
@@ -114,12 +110,9 @@ def _run(args: argparse.Namespace) -> int:
 def _cleanup(isolation: bool, network_name: str, keep: bool) -> None:
     """Stop container and remove network unless --keep was passed."""
     if keep:
-        print(f"\n[egressproof] --keep flag set; leaving container '{CONTAINER_NAME}' running.")
         return
-    print(f"\n[egressproof] Stopping and removing container '{CONTAINER_NAME}' ...")
     stop_and_remove_container(CONTAINER_NAME)
     if isolation:
-        print(f"[egressproof] Removing network '{network_name}' ...")
         remove_isolated_network(network_name)
 
 

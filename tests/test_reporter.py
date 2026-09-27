@@ -53,21 +53,21 @@ def test_text_report_contains_app_name():
 def test_text_report_failed_verdict():
     bundle = _make_bundle(passed=False)
     text = format_text_report(bundle)
-    assert "Result: FAILED" in text
+    assert "RESULT: FAILED" in text
 
 
 def test_text_report_verified_verdict():
     bundle = _make_bundle(passed=True)
     text = format_text_report(bundle)
-    assert "Result: VERIFIED" in text
+    assert "RESULT: VERIFIED" in text
 
 
 def test_text_report_step_pass_fail():
     bundle = _make_bundle(passed=False)
     text = format_text_report(bundle)
-    assert "PASS  health" in text
-    assert "PASS  upload-document" in text
-    assert "FAIL  ask-question" in text
+    assert "✓ health" in text
+    assert "✓ upload-document" in text
+    assert "✗ ask-question" in text
 
 
 def test_text_report_matched_patterns():
@@ -79,7 +79,7 @@ def test_text_report_matched_patterns():
 def test_text_report_no_patterns_message():
     bundle = _make_bundle(passed=False, patterns=[])
     text = format_text_report(bundle)
-    assert "No suspicious external-dependency patterns" in text
+    assert "No external-dependency patterns detected" in text
 
 
 # ── json report ───────────────────────────────────────────────────────────────
@@ -116,8 +116,8 @@ def test_write_report_txt_readable(tmp_path):
     bundle = _make_bundle(passed=False)
     txt_path, _ = write_report(bundle, output_dir=str(tmp_path))
     content = open(txt_path, encoding="utf-8").read()
-    assert "EGRESSPROOF REPORT" in content
-    assert "Result: FAILED" in content
+    assert "EGRESSPROOF" in content
+    assert "RESULT: FAILED" in content
 
 
 def test_write_report_json_parseable(tmp_path):

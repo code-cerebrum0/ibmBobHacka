@@ -15,65 +15,55 @@ from pathlib import Path
 from egressproof.evidence import EvidenceBundle
 
 
-def _step_line(step) -> str:
-    label = "PASS" if step.passed else "FAIL"
-    suffix = f"  <- {step.error}" if step.error else ""
-    return f"  {label:4}  {step.name}{suffix}"
-
-
 def format_text_report(bundle: EvidenceBundle) -> str:
     """Return the human-readable report as a string."""
     lines: list[str] = []
 
-    lines.append("=" * 60)
-    lines.append("EGRESSPROOF REPORT")
-    lines.append("=" * 60)
-    lines.append(f"Application   : {bundle.app_name}")
-    lines.append(f"Timestamp     : {bundle.timestamp}")
-    lines.append(f"Network policy: {bundle.network_policy}")
     lines.append("")
-    lines.append("Workflow:")
-    lines.append(f"  {bundle.workflow_result.workflow_name}")
+    lines.append("EGRESSPROOF")
     lines.append("")
-    lines.append("Step results:")
+    lines.append(f"Application : {bundle.app_name}")
+    lines.append(f"Boundary    : {bundle.network_policy}")
+    lines.append("")
+
     for step in bundle.workflow_result.steps:
-        lines.append(_step_line(step))
+        mark = "✓" if step.passed else "✗"
+        lines.append(f"  {mark} {step.name}")
     lines.append("")
 
     if bundle.matched_patterns:
-        lines.append("Failure evidence:")
-        lines.append("")
-        lines.append("  Suspicious patterns detected in container logs:")
-        for p in bundle.matched_patterns:
-            lines.append(f"    - {p}")
-        lines.append("")
-        if bundle.failed_steps:
-            lines.append("  Failed workflow steps:")
-            for s in bundle.failed_steps:
-                lines.append(f"    - {s.name}: {s.error or 'unknown error'}")
-        lines.append("")
-        lines.append("  Probable reason:")
-        lines.append(
-            "    Embedding model was not packaged locally and attempted to"
-            " download at runtime."
-        )
-    elif not bundle.passed:
-        lines.append("Failure evidence:")
-        lines.append("")
-        lines.append("  No suspicious external-dependency patterns detected in logs.")
-        lines.append("  Review raw container logs for further detail.")
-        if bundle.failed_steps:
-            lines.append("")
-            lines.append("  Failed steps:")
-            for s in bundle.failed_steps:
-                lines.append(f"    - {s.name}: {s.error or 'unknown error'}")
-    else:
-        lines.append("External dependencies detected in logs : 0")
+        # Surface the most informative external hostnames (not internal noise tokens)
+        _noise = {"EGRESS_BLOCKED", "ConnectionError", "socket.gaierror",
+                  "requests.exceptions.ConnectionError", "HTTPSConnectionPool",
+                  "No route to host", "Name or service not known",
+                  "Network is unreachable", "Temporary failure in name resolution",
+                  "OSError: [Errno"}
+        external_hosts = [p for p in bundle.matched_patterns if p not in _noise]
 
-    lines.append("")
+        if external_hosts:
+            lines.append("Unexpected runtime dependencies:")
+            for host in external_hosts:
+                lines.append(f"  {host}")
+            lines.append("")
+
+        if bundle.failed_steps:
+            lines.append("Evidence:")
+            lines.append(
+                "  Runtime model download attempted while external"
+                " name resolution was unavailable."
+            )
+            lines.append("")
+    elif not bundle.passed:
+        lines.append("Evidence:")
+        lines.append("  Workflow failed. No external-dependency patterns detected in logs.")
+        lines.append("  Review raw container logs for further detail.")
+        lines.append("")
+    else:
+        lines.append("Unexpected runtime dependencies detected: 0")
+        lines.append("")
+
     verdict = "VERIFIED" if bundle.passed else "FAILED"
-    lines.append(f"Result: {verdict}")
-    lines.append("=" * 60)
+    lines.append(f"RESULT: {verdict}")
 
     return "\n".join(lines)
 
